@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper   PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="am.main.service.impl.MainPageMapper">
+
+    <!-- 아이디, 패스워드 존재 유무 체크 -->
+    <select id="selectLoginUserInfo" resultType="egovMap">
+		
+		SELECT CASE WHEN ( SELECT COALESCE(MAX(USR_ID), 'N') FROM public.tbl_usr_info WHERE USR_ID = #{searchUserId} ) = #{searchUserId} THEN 'Y' ELSE 'N' END AS ID_FLAG
+			  ,CASE WHEN ( SELECT COALESCE(MAX(USR_PWD), 'N') FROM public.tbl_usr_info WHERE USR_ID = #{searchUserId} AND USR_PWD = fn_encrypt(#{searchUserPwd}) ) = fn_encrypt(#{searchUserPwd}) THEN 'Y' ELSE 'N' END AS PWD_FLAG
+			  ,( SELECT acc_yn FROM public.tbl_usr_info WHERE USR_ID = #{searchUserId} ) AS ACC_FLAG
+		FROM public.tbl_usr_info
+		GROUP BY 1, 2
+		
+	</select>
+
+    <!-- 패스워드 에러횟수 조회 -->
+    <select id="selectErrorCnt" resultType="integer">
+		
+		SELECT COALESCE(MAX(ERR_CNT), 0) AS ERR_CNT FROM public.tbl_usr_info WHERE USR_ID = #{searchUserId}
+	
+	</select>
+
+    <!-- 패스워드 오류 카운트 초기화 -->
+    <update id="updateInitErrorCnt">
+	
+		UPDATE public.tbl_usr_info SET ERR_CNT = 0 WHERE USR_ID = #{searchUserId}
+		
+	</update>
+
+    <!-- 패스워드 오류 횟수 업데이트 -->
+    <update id="updateErrorCnt">
+	
+		UPDATE public.tbl_usr_info SET ERR_CNT = (SELECT COALESCE(ERR_CNT, 0) + 1 FROM public.tbl_usr_info WHERE USR_ID = #{searchUserId})
+		WHERE USR_ID = #{searchUserId}
+	
+	</update>
+    <!-- 접속날짜 update -->
+    <update id="updateAccessDate">
+		
+		update public.tbl_usr_info set access_dt = to_char(current_date, 'YYYYMMDD')
+		where user_id = #{searchUserId}
+		
+	</update>
+
+    <!-- 사용자 정보 조회 -->
+    <select id="selectUserInfo" resultType="egovMap">
+		
+		select a.usr_id
+			  ,a.usr_nm
+			  ,a.org_cde
+			  ,b.org_nm
+			  ,a.dpt_cde
+			  ,a.usr_pwd
+			  ,a.role_cde
+		  from public.tbl_usr_info a,
+			  (
+			  	select id as org_cde
+					  ,cop_nm as org_nm
+				from public.tbl_cop_info
+			  ) b
+		 where a.usr_id = #{searchUserId}
+		   and a.org_cde = b.org_cde
+	
+	</select>
+	
+	<!-- 그룹별 사용자 리스트 조회 -->
+	<select id="workerListByOrg" parameterType="map" resultType="egovMap">
+		
+		select *
+		from public.tbl_usr_info
+		where role_cde = 'R002'
+			and org_cde in
+		<foreach collection="orgCde" item="item" open="(" close=")" separator=",">
+			#{item}
+		</foreach>
+	</select>
+	
+    <!-- 회원가입 -->
+    <insert id="insertUserInfo">
+	
+		insert into public.tbl_usr_info
+		(
+			usr_id
+			,usr_nm
+			,org_cde
+			,usr_pwd
+			,role_cde
+			,acc_yn
+		)
+		values
+		(
+			#{usrId}
+			,#{usrNm}
+			,#{orgCde}
+			,fn_encrypt(#{usrPwd})
+			,#{roleCde}
+			,#{accYn}
+		) 
+	
+	</insert>
+	
+	<!-- 회원정보수정 -->
+	<update id="updateUserInfo">
+	
+		update public.tbl_usr_info
+		set user_nm = #{userNm}
+		<if test="userPwd != null and userPwd != ''">
+		   ,user_pwd = fn_encrypt(#{userPwd})
+		   ,pwd_chg_dt = to_char(current_date, 'yyyymmdd')
+		</if>
+		   ,tel_no = #{telNo}
+		   ,mail_addr = #{mailAddr}
+		   <!-- ,ip_addr = #{ipAddr} -->
+		   ,upt_user = #{userId}
+		   ,upt_dt = to_char(current_date, 'yyyymmdd')
+		   ,upt_tm = to_char(now(), 'hh24miss')
+		where user_id = #{userId}
+		   
+	</update>
+	
+	<!-- 아이디 중복확인 -->
+	<select id="uniqueUserIdCheck" resultType="string">
+		
+		select usr_id from public.tbl_usr_info where usr_id = #{usrId}
+	
+	</select>
+
+    <!-- 비밀번호 갱신 -->
+    <update id="pwdChange">
+
+		update public.tbl_usr_info
+		<if test="userPwd != null and userPwd != ''">
+
+        </if>
+        set user_pwd = fn_encrypt(#{userPwd})
+        ,pwd_chg_dt = to_char(current_date, 'yyyymmdd')
+        ,upt_user = #{userId}
+        ,upt_dt = to_char(current_date, 'yyyymmdd')
+        ,upt_tm = to_char(now(), 'hh24miss')
+        where user_id = #{userId}
+
+    </update>
+	
+	
+	<!-- 업체 목록 조회 -->
+	<select id="getCorpList" parameterType="map" resultType="egovMap">
+	<![CDATA[
+		select *
+		from public.tbl_cop_info
+	]]>
+	</select>
+	
+	<!-- 권한 목록 조회 -->
+	<select id="getRoleList" parameterType="map" resultType="egovMap">
+	<![CDATA[
+		select *
+		from public.sys_role_mng
+		where role_id != 'R000'
+	]]>
+	</select>
+</mapper>

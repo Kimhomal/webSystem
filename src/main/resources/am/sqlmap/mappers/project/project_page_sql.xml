@@ -1,0 +1,357 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper   PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="am.project.service.ProjectPageMapper">
+	<select id="getProjectListByUserId" parameterType="map" resultType="egovMap">
+	<![CDATA[
+		SELECT *
+		FROM TBL_PRJ_INFO
+		WHERE PRJ_ADM = #{usrId}
+    ]]>
+	</select>
+	
+	<select id="getProjectListByWoker" parameterType="map" resultType="egovMap">
+	<![CDATA[
+		SELECT * 
+		FROM TBL_PRJ_INFO
+		WHERE PRJ_ID IN(SELECT PRJ_ID FROM TBL_PRJ_WRK WHERE USR_ID=#{usrId})
+    ]]>
+	</select>
+	
+	<!-- 프로젝트 입력 정보 가져오기 -->
+    <select id="getProjectInfo" parameterType="map" resultType="egovMap">
+	<![CDATA[
+		SELECT *
+		FROM TBL_PRJ_INFO, (SELECT COUNT(*) AS wrk_num FROM tbl_prj_wrk WHERE prj_id = cast(#{prjId} as int)) B
+		WHERE PRJ_ID = cast(#{prjId} as int)
+    ]]>
+	</select>
+	
+	<!-- [프로젝트 정보 입력] -->
+    <insert id="createProject" parameterType="map" useGeneratedKeys="true" keyProperty="prj_id">
+		<![CDATA[
+		INSERT INTO PUBLIC.TBL_PRJ_INFO (
+			PRJ_NM,
+			STR_DT,
+			END_DT,
+			REG_DT,
+			UPT_DT,
+			PRJ_ADM,
+			PRJ_ADR,
+			WRK_OPT,
+			PRG_OPT,
+			PRJ_GRP)
+		VALUES (
+			#{prjNm},
+			to_date(#{strDt}, 'YYYY/MM/DD'),
+			to_date(#{endDt}, 'YYYY/MM/DD'),
+			now(),
+			now(),
+			#{prjAdm},
+			#{prjAdr},
+			#{wrkOpt},
+			#{prgOpt},
+			#{prjGrp})
+		]]>
+	</insert>
+	
+	<select id="getWorkerListByPrjId" parameterType="map" resultType="egovMap">
+	<![CDATA[
+		SELECT A.*, B.USR_NM
+		FROM TBL_PRJ_WRK A, TBL_USR_INFO B
+		WHERE A.PRJ_ID = cast(#{prjId} as int) AND A.USR_ID = B.USR_ID
+    ]]>
+	</select>
+	
+	<select id="getCopListByPrjId" parameterType="map" resultType="egovMap">
+	<![CDATA[
+		SELECT B.*
+		FROM TBL_PRJ_COP A, TBL_COP_INFO B
+		WHERE A.PRJ_ID = cast(#{prjId} as int) AND A.COP_ID = B.ID
+    ]]>
+	</select>
+	
+	<!-- [작업자 정보 입력] -->
+    <insert id="createWorker" parameterType="map">
+	<![CDATA[
+		INSERT INTO PUBLIC.TBL_PRJ_WRK (
+			PRJ_ID,
+			USR_ID)
+		VALUES (
+			cast(#{prjId} as int),
+			#{usrId})
+	]]>
+	</insert>
+	
+	<!-- [프로젝트 참여 업체 등록] -->
+    <insert id="addCopToProject" parameterType="map">
+	<![CDATA[
+		INSERT INTO PUBLIC.tbl_prj_cop (
+			PRJ_ID,
+			COP_ID
+		)
+		VALUES (
+			cast(#{prjId} as int),
+			cast(#{copId} as int)
+		)
+	]]>
+	</insert>
+	
+	<!-- [특정 프로젝트 작업자 전부 삭제] -->
+    <delete id="deleteWorkerByPrjId" parameterType="map">
+	<![CDATA[
+		DELETE FROM PUBLIC.TBL_PRJ_WRK
+		WHERE PRJ_ID = cast(#{prjId} as int)
+    ]]>
+	</delete>
+	
+	<!-- [프로젝트 입력 정보 갱신] -->
+    <update id="updateProjectInfo" parameterType="map">
+        <![CDATA[
+			UPDATE PUBLIC.TBL_PRJ_INFO
+			SET
+				PRJ_NM = #{prjNm},
+				STR_DT = to_date(#{strDt}, 'YYYY/MM/DD'),
+				END_DT = to_date(#{endDt}, 'YYYY/MM/DD'),
+				PRJ_ADR = #{prjAdr},
+				WRK_OPT = #{wrkOpt},
+				UPT_DT = now()
+			WHERE
+				PRJ_ID = cast(#{prjId} as int)
+		]]>
+    </update>
+    
+    <!-- [프로젝트 진행률 조회] -->
+    <select id="getProjectProgress" parameterType="map" resultType="egovMap">
+	<![CDATA[
+		select 
+			opt_key
+			,SUM(cast(opt_val as int))
+		from
+			tbl_wrk_prg
+		where
+			wrk_id IN (
+				select
+					wrk_id
+				from
+					tbl_prj_wrk
+				where
+					prj_id = cast(#{prjId} as int)
+			)
+	]]>
+		<if test='workers != null'>
+			<foreach collection="workers" item="item" open="AND wrk_id IN (" close=")" separator=",">
+				#{item}
+			</foreach>
+		</if>
+		<if test='strDt != null'>
+			<![CDATA[
+				and reg_dt >= #{strDt}::date
+		    ]]>
+		</if>
+		<if test='endDt != null'>
+			<![CDATA[
+				and reg_dt <= #{endDt}::date
+		    ]]>
+		</if>
+	<![CDATA[
+		group by opt_key
+    ]]>
+	</select>
+    
+    <!-- [프로젝트 ID로 성과 입력 목록 조회] -->
+    <select id="getWorkProgressByPid" parameterType="map" resultType="egovMap">
+	<![CDATA[
+		select
+			rst_id
+			,geom
+			,TO_CHAR(reg_dt, 'YYYY-MM-DD HH24:MI:SS') as reg_dt
+			,TO_CHAR(upt_dt, 'YYYY-MM-DD HH24:MI:SS') as upt_dt
+			,wrk_id
+			,st_astext(GEOM) AS geometry
+		from
+			tbl_wrk_rst
+		where
+			wrk_id IN (
+				select
+					wrk_id
+				from
+					tbl_prj_wrk
+				where
+					prj_id = cast(#{prjId} as int)
+			)
+    ]]>
+   		<if test='workers != null'>
+   			<foreach collection="workers" item="item" open="AND (" close=")" separator="OR">
+   				
+   			</foreach>
+   		</if>
+	</select>
+	
+	<!-- [성과 입력 ID로 작업 진행률 조회] -->
+    <select id="getWorkProgressByRstId" parameterType="map" resultType="egovMap">
+	<![CDATA[
+		select 
+			*
+		from
+			tbl_wrk_prg a left join sys_wrk_opt b on a.opt_key = b.id
+		where
+			a.rst_id = cast(#{rstId} as int)
+    ]]>
+	</select>
+	
+	<!-- [작업 입력 목록 조회] -->
+	<select id="getWorkHistory" parameterType="am.common.paging.PagingInfo" resultType="egovMap">
+	<![CDATA[
+		SELECT TO_CHAR(a.reg_dt, 'YYYY-MM-DD HH24:MI:SS') as reg_dt, a.rst_id, b.usr_nm
+		FROM 
+			tbl_wrk_rst a LEFT JOIN 
+				(SELECT 
+					c.wrk_id, d.usr_nm 
+				FROM tbl_prj_wrk c 
+				LEFT JOIN tbl_usr_info d 
+				ON c.usr_id = d.usr_id 
+				WHERE c.prj_id = cast(#{attr.prjId} as int)) b 
+			ON a.wrk_id = b.wrk_id
+	]]>
+	<where>
+		<![CDATA[ b.usr_nm IS NOT NULL ]]>
+		<if test='searchColumn != null'>
+			<foreach collection="searchColumn" item="item" open="and" separator="or">
+				<![CDATA[ CAST(${item} AS TEXT) LIKE '%'||'${searchVal}'||'%' ]]>
+			</foreach>
+		</if>
+	</where>
+	<![CDATA[
+		ORDER BY
+		${orderColumn} ${orderDirection}
+		LIMIT
+		${length}
+		OFFSET
+		${start}
+    ]]>
+	</select>
+	
+	<!-- [작업 입력 목록 삭제] -->
+    <delete id="deleteWorkHistory" parameterType="map">
+	<![CDATA[
+		DELETE FROM PUBLIC.TBL_WRK_RST
+		WHERE RST_ID = cast(#{rstId} as int)
+    ]]>
+	</delete>
+	
+	<!-- [작업 입력 개수 조회] -->
+	<select id="getCountWorkHistory" parameterType="map" resultType="int">
+	<![CDATA[
+		SELECT count(*)
+		FROM 
+			tbl_wrk_rst a LEFT JOIN 
+				(SELECT 
+					wrk_id, usr_id 
+				FROM tbl_prj_wrk 
+				WHERE prj_id = cast(#{prjId} as int)) b 
+			ON a.wrk_id = b.wrk_id
+		WHERE b.usr_id IS NOT NULL
+	]]>
+	</select>
+    
+    <!-- [작업자 입력 성과 정보 갱신] -->
+    <insert id="insertWorkResult" parameterType="map" useGeneratedKeys="true" keyProperty="rst_id">
+	<![CDATA[
+		INSERT INTO PUBLIC.TBL_WRK_RST (
+			GEOM
+			,REG_DT
+			,UPT_DT
+			,WRK_ID
+		)
+		VALUES (
+			st_geomfromtext(#{geom})
+			,now()
+			,now()
+			,(select wrk_id from tbl_prj_wrk where prj_id=cast(#{prjId} as int) and usr_id=#{usrId})
+		)
+	]]>
+	</insert>
+	
+    <!-- [작업자 입력 성과 상세정보 갱신] -->
+    <insert id="insertProgress" parameterType="map">
+	<![CDATA[
+		INSERT INTO PUBLIC.TBL_WRK_PRG (
+			REG_DT
+			,UPT_DT
+			,WRK_ID
+			,opt_key
+			,opt_val
+			,geom
+			,rst_id
+		)
+		VALUES (
+			now()
+			,now()
+			,(select wrk_id from tbl_prj_wrk where prj_id=cast(#{prjId} as int) and usr_id=#{usrId})
+			,#{optKey}
+			,#{optVal}
+			,st_geomfromtext(#{geom})
+			,cast(#{rst_id} as int)
+		)
+	]]>
+	</insert>
+	
+	<!-- [작업 성과 이미지 업로드] -->
+    <insert id="uploadResultImage" parameterType="map">
+	<![CDATA[
+		INSERT INTO PUBLIC.TBL_RST_IMG (
+			FILE_NM,
+			FILE_PATH,
+			RST_ID,
+			REG_DT,
+			SV_FILE_NM)
+		VALUES (
+			#{fileNm},
+			#{filePath},
+			cast(#{rstId} as int),
+			now(),
+			#{svFileNm})
+	]]>
+	</insert>
+	
+	<!-- [ID로 성과 업로드 이미지 가져오기] -->
+    <select id="getResultImageById" parameterType="map" resultType="egovMap">
+	<![CDATA[
+		select 
+			*
+		from
+			tbl_rst_img
+		where
+			file_no = cast(#{id} as int)
+    ]]>
+	</select>
+	
+	<!-- [RSTID로 성과 업로드 이미지 목록 가져오기] -->
+    <select id="getResultImagesByRstId" parameterType="map" resultType="egovMap">
+	<![CDATA[
+		select 
+			*
+		from
+			tbl_rst_img
+		where
+			rst_id = cast(#{rstId} as int)
+    ]]>
+	</select>
+	
+	<!-- [프로젝트 삭제] -->
+    <delete id="deleteProject" parameterType="map">
+	<![CDATA[
+		DELETE FROM PUBLIC.TBL_PRJ_INFO
+		WHERE PRJ_ID = cast(#{prjId} as int)
+    ]]>
+	</delete>
+	
+	<!-- [프로젝트 참여 업체 삭제] -->
+    <delete id="deleteProjectCops" parameterType="map">
+	<![CDATA[
+		DELETE FROM PUBLIC.TBL_PRJ_COP
+		WHERE PRJ_ID = cast(#{prjId} as int)
+    ]]>
+	</delete>
+</mapper>
